@@ -1,0 +1,32 @@
+name: Continuous Integration ‑ GitHub Actions
+
+on:
+  push:
+    paths:
+      - ".github/workflows/**.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/**.yml"
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  # Since 'workflow_call' is defined, include the repository name and branch name in the group name to avoid possible deadlocks between the caller and the callee
+  group: github-actions-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@v1
+
+      - name: Install actionlint
+        run: brioche install -r actionlint
+
+      - name: Check GitHub Actions workflow files
+        run: actionlint

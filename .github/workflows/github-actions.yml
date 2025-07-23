@@ -3,10 +3,12 @@ name: Continuous Integration ‑ GitHub Actions
 on:
   push:
     paths:
-      - ".github/workflows/**/*.{yml,yaml}"
+      - ".github/workflows/**/*.yml"
+      - ".github/workflows/**/*.yaml"
   pull_request:
     paths:
-      - ".github/workflows/**/*.{yml,yaml}"
+      - ".github/workflows/**/*.yml"
+      - ".github/workflows/**/*.yaml"
   workflow_call:
   workflow_dispatch:
 

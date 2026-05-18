@@ -1,0 +1,27 @@
+name: Continuous Integration - Static Analysis (Shell)
+
+on:
+  workflow_call:
+
+concurrency:
+  group: static-analysis-shell-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shell-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
+
+      - name: Install shellcheck
+        run: brioche install -r shellcheck
+
+      - name: Check linting
+        run: find . -type f -exec awk 'FNR==1 && $0=="#!/usr/bin/env bash"{printf "%s\0",FILENAME}' {} + | xargs -r0 shellcheck -o all

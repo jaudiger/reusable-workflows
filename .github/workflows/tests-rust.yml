@@ -1,0 +1,125 @@
+name: Continuous Integration - Tests (Rust)
+
+on:
+  workflow_call:
+    inputs:
+      enable-benchmarks:
+        description: "Run 'cargo bench --all-features' as an additional rust-benchmark-tests job."
+        type: boolean
+        default: false
+      system-packages:
+        description: "Space-separated apt packages required to build the crate (passed to apt-get install). Leave empty for pure-Rust crates."
+        type: string
+        default: ""
+
+concurrency:
+  group: tests-rust-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CODE_COVERAGE_REPORT_FOLDER: target/coverage
+  CODE_COVERAGE_REPORT_FILE: report.xml
+
+jobs:
+  rust-benchmark-tests:
+    if: inputs.enable-benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install system packages
+        if: inputs.system-packages != ''
+        env:
+          PKGS: ${{ inputs.system-packages }}
+        run: |
+          read -ra PKG_ARR <<< "$PKGS"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${PKG_ARR[@]}"
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: rust-benchmark-tests-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            rust-benchmark-tests-
+
+      - name: Run benchmarks
+        run: cargo bench --locked --all-features
+
+  rust-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install system packages
+        if: inputs.system-packages != ''
+        env:
+          PKGS: ${{ inputs.system-packages }}
+        run: |
+          read -ra PKG_ARR <<< "$PKGS"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${PKG_ARR[@]}"
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
+
+      - name: Install cargo-llvm-cov
+        run: brioche install -r cargo_llvm_cov
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: rust-unit-tests-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            rust-unit-tests-
+
+      - name: Run tests and generate coverage reports
+        run: |
+          mkdir -p ${{ env.CODE_COVERAGE_REPORT_FOLDER }}
+          cargo llvm-cov --locked --workspace --all-features --cobertura --output-path ${{ env.CODE_COVERAGE_REPORT_FOLDER }}/${{ env.CODE_COVERAGE_REPORT_FILE }}
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: |
+            ${{ env.CODE_COVERAGE_REPORT_FOLDER }}/${{ env.CODE_COVERAGE_REPORT_FILE }}
+          retention-days: 7
+
+      - name: Generate coverage summary
+        uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
+        with:
+          filename: ${{ env.CODE_COVERAGE_REPORT_FOLDER }}/${{ env.CODE_COVERAGE_REPORT_FILE }}
+          indicators: false

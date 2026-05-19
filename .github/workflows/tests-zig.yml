@@ -28,4 +28,4 @@ jobs:
           version: ${{ inputs.zig-version }}
 
       - name: Run tests
-        run: zig build test --summary
+        run: zig build test --summary all

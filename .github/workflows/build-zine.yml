@@ -1,0 +1,40 @@
+name: Continuous Integration - Build (Zine)
+
+on:
+  workflow_call:
+    inputs:
+      zine-version:
+        description: "Zine release tag to install via kristoff-it/setup-zine."
+        type: string
+        required: true
+      output-dir:
+        description: "Build output directory produced by `zine release`."
+        type: string
+        default: "public"
+
+concurrency:
+  group: build-zine-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  zine-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Zine
+        uses: kristoff-it/setup-zine@46308d08c1c1316d1927adcc3eaaba8037f10c1e # v1
+        with:
+          version: ${{ inputs.zine-version }}
+
+      - name: Build
+        run: zine release
+
+      - name: Verify output directory exists
+        env:
+          OUTPUT_DIR: ${{ inputs.output-dir }}
+        run: test -d "$OUTPUT_DIR"

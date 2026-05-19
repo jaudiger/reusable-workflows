@@ -1,0 +1,59 @@
+name: Continuous Integration - Build (Rust)
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        description: "Rust toolchain to install via dtolnay/rust-toolchain."
+        type: string
+        default: "stable"
+      system-packages:
+        description: "Space-separated apt packages required to build the crate (passed to apt-get install). Leave empty for pure-Rust crates."
+        type: string
+        default: ""
+
+concurrency:
+  group: build-rust-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rust-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install system packages
+        if: inputs.system-packages != ''
+        env:
+          PKGS: ${{ inputs.system-packages }}
+        run: |
+          read -ra PKG_ARR <<< "$PKGS"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${PKG_ARR[@]}"
+
+      - name: Install Rust (${{ inputs.toolchain }})
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: build-rust-${{ inputs.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            build-rust-${{ inputs.toolchain }}-
+
+      - name: Build
+        run: cargo build --locked

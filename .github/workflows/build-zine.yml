@@ -7,10 +7,6 @@ on:
         description: "Zine release tag to install via kristoff-it/setup-zine."
         type: string
         required: true
-      output-dir:
-        description: "Build output directory produced by `zine release`."
-        type: string
-        default: "public"
 
 concurrency:
   group: build-zine-${{ github.repository }}-${{ github.ref_name }}
@@ -33,8 +29,3 @@ jobs:
 
       - name: Build
         run: zine release
-
-      - name: Verify output directory exists
-        env:
-          OUTPUT_DIR: ${{ inputs.output-dir }}
-        run: test -d "$OUTPUT_DIR"

@@ -1,0 +1,31 @@
+name: Continuous Integration - Build (Zig)
+
+on:
+  workflow_call:
+    inputs:
+      zig-version:
+        description: "Zig toolchain version to install via mlugg/setup-zig."
+        type: string
+        required: true
+
+concurrency:
+  group: build-zig-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  zig-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ inputs.zig-version }}
+
+      - name: Build
+        run: zig build --summary all

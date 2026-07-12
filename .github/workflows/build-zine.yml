@@ -2,11 +2,6 @@ name: Continuous Integration - Build (Zine)
 
 on:
   workflow_call:
-    inputs:
-      zine-version:
-        description: "Zine release tag to install via kristoff-it/setup-zine."
-        type: string
-        required: true
 
 concurrency:
   group: build-zine-${{ github.repository }}-${{ github.ref_name }}
@@ -24,8 +19,6 @@ jobs:
 
       - name: Install Zine
         uses: kristoff-it/setup-zine@ecfe04402bfa943fb0dc59e097e81c858a8ad9d9 # v2
-        with:
-          version: ${{ inputs.zine-version }}
 
       - name: Build
         run: zine release

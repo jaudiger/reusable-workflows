@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install Zine
-        uses: kristoff-it/setup-zine@46308d08c1c1316d1927adcc3eaaba8037f10c1e # v1
+        uses: kristoff-it/setup-zine@ecfe04402bfa943fb0dc59e097e81c858a8ad9d9 # v2
         with:
           version: ${{ inputs.zine-version }}
 

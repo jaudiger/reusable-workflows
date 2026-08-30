@@ -29,13 +29,17 @@ jobs:
         id: detect
         shell: bash
         run: |
-          echo "use_uv_ruff=false" >> "$GITHUB_OUTPUT"
+          ruff_environment="Brioche"
+          printf '%s\n' 'use_uv_ruff=false' >> "$GITHUB_OUTPUT"
 
           if tree="$(uv --color never tree --locked --only-dev --package ruff --depth 0)"; then
             if grep -qE '^ruff v' <<< "$tree"; then
-              echo "use_uv_ruff=true" >> "$GITHUB_OUTPUT"
+              printf '%s\n' 'use_uv_ruff=true' >> "$GITHUB_OUTPUT"
+              ruff_environment="uv"
             fi
           fi
+
+          printf 'Detected Ruff environment: %s\n' "$ruff_environment"
 
   python-format:
     needs: detect_python
@@ -55,11 +59,11 @@ jobs:
         if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: brioche install -r ruff
 
-      - name: Check formatting with uv
+      - name: Check formatting using Ruff through uv
         if: needs.detect_python.outputs.use_uv_ruff == 'true'
         run: uv run --locked ruff format --check .
 
-      - name: Check formatting with Brioche
+      - name: Check formatting using Ruff through Brioche
         if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: ruff format --check .
 
@@ -81,10 +85,10 @@ jobs:
         if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: brioche install -r ruff
 
-      - name: Check linting with uv
+      - name: Check linting using Ruff through uv
         if: needs.detect_python.outputs.use_uv_ruff == 'true'
         run: uv run --locked ruff check .
 
-      - name: Check linting with Brioche
+      - name: Check linting using Ruff through Brioche
         if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: ruff check .

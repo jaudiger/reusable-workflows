@@ -62,7 +62,7 @@ jobs:
           TAG="${GITHUB_REF##*/}"
           TOML_VERSION="v$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)"
           if [[ "$TAG" != "$TOML_VERSION" ]]; then
-            echo "($TAG) and Cargo.toml ($TOML_VERSION) differ. Please update the tag or Cargo.toml."
+            printf '(%s) and Cargo.toml (%s) differ. Please update the tag or Cargo.toml.\n' "$TAG" "$TOML_VERSION"
             exit 1
           fi
 

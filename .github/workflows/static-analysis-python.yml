@@ -11,7 +11,34 @@ permissions:
   contents: read
 
 jobs:
+  detect_python:
+    runs-on: ubuntu-latest
+    outputs:
+      use_uv_ruff: ${{ steps.detect.outputs.use_uv_ruff }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
+
+      - name: Install uv
+        run: brioche install -r uv
+
+      - name: Detect project Ruff
+        id: detect
+        shell: bash
+        run: |
+          echo "use_uv_ruff=false" >> "$GITHUB_OUTPUT"
+
+          if tree="$(uv --color never tree --locked --only-dev --package ruff --depth 0)"; then
+            if grep -qE '^ruff v' <<< "$tree"; then
+              echo "use_uv_ruff=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
   python-format:
+    needs: detect_python
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,13 +47,24 @@ jobs:
       - name: Install Brioche
         uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
 
+      - name: Install uv
+        if: needs.detect_python.outputs.use_uv_ruff == 'true'
+        run: brioche install -r uv
+
       - name: Install ruff
+        if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: brioche install -r ruff
 
-      - name: Check formatting
+      - name: Check formatting with uv
+        if: needs.detect_python.outputs.use_uv_ruff == 'true'
+        run: uv run --locked ruff format --check .
+
+      - name: Check formatting with Brioche
+        if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: ruff format --check .
 
   python-lint:
+    needs: detect_python
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,8 +73,18 @@ jobs:
       - name: Install Brioche
         uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
 
+      - name: Install uv
+        if: needs.detect_python.outputs.use_uv_ruff == 'true'
+        run: brioche install -r uv
+
       - name: Install ruff
+        if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: brioche install -r ruff
 
-      - name: Check linting
+      - name: Check linting with uv
+        if: needs.detect_python.outputs.use_uv_ruff == 'true'
+        run: uv run --locked ruff check .
+
+      - name: Check linting with Brioche
+        if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: ruff check .

@@ -4,9 +4,8 @@ on:
   workflow_call:
     inputs:
       python-version:
-        description: "Python version to install via actions/setup-python."
+        description: "Python version to install via actions/setup-python when uv is not used."
         type: string
-        required: true
 
 concurrency:
   group: tests-python-${{ github.repository }}-${{ github.ref_name }}
@@ -16,16 +15,59 @@ permissions:
   contents: read
 
 jobs:
+  detect_python:
+    runs-on: ubuntu-latest
+    outputs:
+      use_uv_python: ${{ steps.detect.outputs.use_uv_python }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
+
+      - name: Install uv
+        run: brioche install -r uv
+
+      - name: Detect uv Python
+        id: detect
+        shell: bash
+        run: |
+          python_environment="actions/setup-python"
+          printf '%s\n' 'use_uv_python=false' >> "$GITHUB_OUTPUT"
+
+          if [[ -f pyproject.toml && -f uv.lock ]]; then
+            printf '%s\n' 'use_uv_python=true' >> "$GITHUB_OUTPUT"
+            python_environment="uv"
+          fi
+
+          printf 'Detected Python environment: %s\n' "$python_environment"
+
   python-unit-tests:
+    needs: detect_python
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install Brioche
+        if: needs.detect_python.outputs.use_uv_python == 'true'
+        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
+
+      - name: Install uv
+        if: needs.detect_python.outputs.use_uv_python == 'true'
+        run: brioche install -r uv
+
       - name: Set up Python
+        if: needs.detect_python.outputs.use_uv_python != 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ inputs.python-version }}
 
-      - name: Run tests
+      - name: Run tests using Python through uv
+        if: needs.detect_python.outputs.use_uv_python == 'true'
+        run: uv run --locked python -m unittest discover -s tests -v
+
+      - name: Run tests using Python from setup-python
+        if: needs.detect_python.outputs.use_uv_python != 'true'
         run: python -m unittest discover -s tests -v

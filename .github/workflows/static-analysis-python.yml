@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       use_uv_ruff: ${{ steps.detect.outputs.use_uv_ruff }}
+      use_uv_ty: ${{ steps.detect.outputs.use_uv_ty }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,12 +26,14 @@ jobs:
       - name: Install uv
         run: brioche install -r uv
 
-      - name: Detect project Ruff
+      - name: Detect project Python tools
         id: detect
         shell: bash
         run: |
           ruff_environment="Brioche"
+          ty_environment="Brioche"
           printf '%s\n' 'use_uv_ruff=false' >> "$GITHUB_OUTPUT"
+          printf '%s\n' 'use_uv_ty=false' >> "$GITHUB_OUTPUT"
 
           if tree="$(uv --color never tree --locked --only-dev --package ruff --depth 0)"; then
             if grep -qE '^ruff v' <<< "$tree"; then
@@ -39,7 +42,15 @@ jobs:
             fi
           fi
 
+          if tree="$(uv --color never tree --locked --only-dev --package ty --depth 0)"; then
+            if grep -qE '^ty v' <<< "$tree"; then
+              printf '%s\n' 'use_uv_ty=true' >> "$GITHUB_OUTPUT"
+              ty_environment="uv"
+            fi
+          fi
+
           printf 'Detected Ruff environment: %s\n' "$ruff_environment"
+          printf 'Detected Ty environment: %s\n' "$ty_environment"
 
   python-format:
     needs: detect_python
@@ -78,12 +89,16 @@ jobs:
         uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
 
       - name: Install uv
-        if: needs.detect_python.outputs.use_uv_ruff == 'true'
+        if: needs.detect_python.outputs.use_uv_ruff == 'true' || needs.detect_python.outputs.use_uv_ty == 'true'
         run: brioche install -r uv
 
       - name: Install ruff
         if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: brioche install -r ruff
+
+      - name: Install ty
+        if: needs.detect_python.outputs.use_uv_ty != 'true'
+        run: brioche install -r ty
 
       - name: Check linting using Ruff through uv
         if: needs.detect_python.outputs.use_uv_ruff == 'true'
@@ -92,3 +107,11 @@ jobs:
       - name: Check linting using Ruff through Brioche
         if: needs.detect_python.outputs.use_uv_ruff != 'true'
         run: ruff check .
+
+      - name: Check typing using Ty through uv
+        if: needs.detect_python.outputs.use_uv_ty == 'true'
+        run: uv run --locked ty check .
+
+      - name: Check typing using Ty through Brioche
+        if: needs.detect_python.outputs.use_uv_ty != 'true'
+        run: ty check .

@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       system-packages:
-        description: "Space-separated apt packages required to build the crate (passed to apt-get install). Leave empty for pure-Rust crates."
+        description: "Space-separated apt package names required for the build. Leave empty when none are needed."
         type: string
         default: ""
     secrets:
@@ -13,65 +13,33 @@ on:
       CLOUDFLARE_ACCOUNT_ID:
         required: true
 
-concurrency:
-  group: deployment-${{ github.repository }}-${{ github.ref_name }}
-
 permissions:
   contents: read
 
-env:
-  WASM_TARGET: wasm32-unknown-unknown
-  TRUNK_OUTPUT_DIR: dist
-
 jobs:
+  trunk-build:
+    uses: ./.github/workflows/build-rust-trunk.yml
+    with:
+      system-packages: ${{ inputs.system-packages }}
+
   deployment:
+    needs: trunk-build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      
 
-      - name: Install system packages
-        if: inputs.system-packages != ''
-        env:
-          PKGS: ${{ inputs.system-packages }}
-        run: |
-          read -ra PKG_ARR <<< "$PKGS"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends "${PKG_ARR[@]}"
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+      - name: Download Trunk output
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
         with:
-          toolchain: stable
-          targets: ${{ env.WASM_TARGET }}
-
-      - name: Install Brioche
-        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
-
-      - name: Install trunk
-        run: brioche install -r trunk
-
-      - name: Cache cargo registry + build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/.crates.toml
-            ~/.cargo/.crates2.json
-            ~/.cargo/bin
-            ~/.cargo/git/db
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/index
-            target
-          key: deployment-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            deployment-
-
-      - name: Build
-        run: trunk build --locked --release --public-url "/"
+          name: trunk-dist
+          path: dist
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        env:
+          PROJECT_NAME: ${{ github.event.repository.name }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ${{ env.TRUNK_OUTPUT_DIR }} --project-name=${{ github.event.repository.name }} --branch=${{ github.ref_name }}
+          command: pages deploy dist --project-name="$PROJECT_NAME" --branch="$DEPLOY_BRANCH"

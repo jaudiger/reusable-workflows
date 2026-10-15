@@ -1,0 +1,66 @@
+name: Continuous Integration - Build Rust WASM with Trunk
+
+on:
+  workflow_call:
+    inputs:
+      system-packages:
+        description: "Space-separated apt package names required for the build. Leave empty when none are needed."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  trunk-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install system packages
+        if: inputs.system-packages != ''
+        env:
+          PKGS: ${{ inputs.system-packages }}
+        run: |
+          read -ra PKG_ARR <<< "$PKGS"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${PKG_ARR[@]}"
+
+      - name: Install Rust (stable, WASM target)
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@9b82d4ee697500f7d81f6397a943935ffa3d887b # v1.5.0
+
+      - name: Install Trunk
+        run: brioche install -r trunk
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: trunk-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            trunk-build-
+
+      - name: Build caller root index.html
+        run: trunk build --locked --release --public-url "/"
+
+      - name: Upload Trunk output
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trunk-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7

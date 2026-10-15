@@ -4,11 +4,11 @@ on:
   workflow_call:
     inputs:
       enable-benchmarks:
-        description: "Run 'cargo bench --all-features' as an additional rust-benchmark-tests job."
+        description: "Whether to run the additional benchmark job with all Cargo features."
         type: boolean
         default: false
       system-packages:
-        description: "Space-separated apt packages required to build the crate (passed to apt-get install). Leave empty for pure-Rust crates."
+        description: "Space-separated apt package names required for the build. Leave empty when none are needed."
         type: string
         default: ""
 

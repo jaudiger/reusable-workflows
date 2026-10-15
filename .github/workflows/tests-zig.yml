@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       zig-version:
-        description: "Zig toolchain version to install via mlugg/setup-zig."
+        description: "Zig toolchain version to install."
         type: string
         required: true
 

@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       output-dir:
-        description: "Build output directory passed to wrangler pages deploy."
+        description: "Directory containing the site output to deploy."
         type: string
         default: "public"
     secrets:

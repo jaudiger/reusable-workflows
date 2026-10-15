@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       python-version:
-        description: "Python version to install via actions/setup-python when uv is not used."
+        description: "Python version to install when uv is not used."
         type: string
 
 concurrency:

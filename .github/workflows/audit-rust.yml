@@ -3,10 +3,6 @@ name: Continuous Integration - Audit (Rust)
 on:
   workflow_call:
 
-concurrency:
-  group: audit-rust-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 

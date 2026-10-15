@@ -3,10 +3,6 @@ name: Continuous Integration - Static Analysis (Shell)
 on:
   workflow_call:
 
-concurrency:
-  group: static-analysis-shell-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 

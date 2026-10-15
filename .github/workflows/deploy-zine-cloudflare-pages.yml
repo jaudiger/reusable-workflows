@@ -13,9 +13,6 @@ on:
       CLOUDFLARE_ACCOUNT_ID:
         required: true
 
-concurrency:
-  group: deployment-${{ github.repository }}-${{ github.ref_name }}
-
 permissions:
   contents: read
 

@@ -3,10 +3,6 @@ name: Continuous Integration - Static Analysis (Terraform)
 on:
   workflow_call:
 
-concurrency:
-  group: static-analysis-terraform-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 

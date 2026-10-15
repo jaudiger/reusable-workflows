@@ -11,9 +11,6 @@ on:
       CRATES_IO_API_TOKEN:
         required: true
 
-concurrency:
-  group: deployment-${{ github.repository }}-${{ github.ref_name }}
-
 permissions:
   contents: read
 

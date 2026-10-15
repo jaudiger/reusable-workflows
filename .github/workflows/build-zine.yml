@@ -3,10 +3,6 @@ name: Continuous Integration - Build (Zine)
 on:
   workflow_call:
 
-concurrency:
-  group: build-zine-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 

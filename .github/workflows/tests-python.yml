@@ -7,10 +7,6 @@ on:
         description: "Python version to install when uv is not used."
         type: string
 
-concurrency:
-  group: tests-python-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 

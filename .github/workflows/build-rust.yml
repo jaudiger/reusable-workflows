@@ -4,17 +4,29 @@ on:
   workflow_call:
     inputs:
       toolchain:
-        description: "Rust toolchain to install via dtolnay/rust-toolchain."
+        description: "Rust toolchain version to install."
         type: string
         default: "stable"
-      system-packages:
-        description: "Space-separated apt packages required to build the crate (passed to apt-get install). Leave empty for pure-Rust crates."
+      target:
+        description: "Rust target triple used for compilation or Clippy."
         type: string
         default: ""
-
-concurrency:
-  group: build-rust-${{ github.repository }}-${{ github.ref_name }}
-  cancel-in-progress: true
+      features:
+        description: "Comma or space-separated Cargo feature names to enable."
+        type: string
+        default: ""
+      no-default-features:
+        description: "Whether to disable Cargo default features."
+        type: boolean
+        default: false
+      all-features:
+        description: "Whether to enable all Cargo features. Set false to use default or selected features."
+        type: boolean
+        default: false
+      system-packages:
+        description: "Space-separated apt package names required for the build. Leave empty when none are needed."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -39,6 +51,7 @@ jobs:
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
           toolchain: ${{ inputs.toolchain }}
+          targets: ${{ inputs.target }}
 
       - name: Cache cargo registry + build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -51,9 +64,40 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/registry/index
             target
-          key: build-rust-${{ inputs.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+          key: build-rust-${{ inputs.toolchain }}-${{ inputs.target || 'host' }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            build-rust-${{ inputs.toolchain }}-
+            build-rust-${{ inputs.toolchain }}-${{ inputs.target || 'host' }}-
 
       - name: Build
-        run: cargo build --locked
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+          FEATURES: ${{ inputs.features }}
+          NO_DEFAULT_FEATURES: ${{ inputs.no-default-features }}
+          ALL_FEATURES: ${{ inputs.all-features }}
+        run: |
+          set -euo pipefail
+          if [[ "$ALL_FEATURES" == "true" && ( -n "$FEATURES" || "$NO_DEFAULT_FEATURES" == "true" ) ]]; then
+            printf '%s\n' 'all-features cannot be combined with features or no-default-features.' >&2
+            exit 1
+          fi
+          args=(--locked)
+          if [[ -n "$TARGET" ]]; then
+            args+=(--target "$TARGET")
+          fi
+          if [[ "$ALL_FEATURES" == "true" ]]; then
+            args+=(--all-features)
+          else
+            if [[ "$NO_DEFAULT_FEATURES" == "true" ]]; then
+              args+=(--no-default-features)
+            fi
+            if [[ -n "$FEATURES" ]]; then
+              normalized_features=${FEATURES//,/ }
+              read -r -a feature_list <<< "$normalized_features"
+              if ((${#feature_list[@]} > 0)); then
+                feature_csv=$(IFS=,; printf '%s' "${feature_list[*]}")
+                args+=(--features "$feature_csv")
+              fi
+            fi
+          fi
+          cargo build "${args[@]}"

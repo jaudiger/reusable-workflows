@@ -1,0 +1,283 @@
+name: Package Rust Desktop Application
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: "Runner label to use for this target."
+        type: string
+        required: true
+      target:
+        description: "Rust target triple used for compilation or Clippy."
+        type: string
+        required: true
+      binary-name:
+        description: "Executable file name without the Windows .exe suffix."
+        type: string
+        required: true
+      package-name:
+        description: "Name used for the package directory and archive file."
+        type: string
+        required: true
+      artifact-name:
+        description: "Name assigned to the uploaded artifact."
+        type: string
+        required: true
+      package-layout:
+        description: "Archive layout to create: linux-tar-gz, windows-zip, or macos-app-zip."
+        type: string
+        required: true
+      asset-directory:
+        description: "Optional caller repository directory to include in the package."
+        type: string
+        default: ""
+      system-packages:
+        description: "Space-separated apt package names required for the build. Leave empty when none are needed."
+        type: string
+        default: ""
+      macos-bundle-name:
+        description: "macOS app bundle display name. Required for macos-app-zip."
+        type: string
+        default: ""
+      macos-bundle-identifier:
+        description: "macOS app bundle identifier. Required for macos-app-zip."
+        type: string
+        default: ""
+      macos-bundle-version:
+        description: "macOS app bundle version. Defaults to the root Cargo.toml package version when empty."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package ${{ inputs.package-name }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate packaging inputs
+        shell: bash
+        env:
+          PACKAGE_RUNNER_OS: ${{ runner.os }}
+          PACKAGE_LAYOUT: ${{ inputs.package-layout }}
+          PACKAGE_NAME: ${{ inputs.package-name }}
+          BINARY_NAME: ${{ inputs.binary-name }}
+          ASSET_DIRECTORY: ${{ inputs.asset-directory }}
+          SYSTEM_PACKAGES: ${{ inputs.system-packages }}
+          BUNDLE_NAME: ${{ inputs.macos-bundle-name }}
+          BUNDLE_IDENTIFIER: ${{ inputs.macos-bundle-identifier }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PACKAGE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            printf '%s\n' 'package-name must be a simple file-name stem.' >&2
+            exit 1
+          fi
+          if [[ ! "$BINARY_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            printf '%s\n' 'binary-name must be a simple executable file name.' >&2
+            exit 1
+          fi
+          if [[ -n "$SYSTEM_PACKAGES" && "$PACKAGE_RUNNER_OS" != "Linux" ]]; then
+            printf '%s\n' 'system-packages is supported only on Linux runners.' >&2
+            exit 1
+          fi
+          case "$PACKAGE_LAYOUT:$PACKAGE_RUNNER_OS" in
+            linux-tar-gz:Linux|windows-zip:Windows|macos-app-zip:macOS) ;;
+            *)
+              printf '%s\n' 'package-layout must match the selected runner platform.' >&2
+              exit 1
+              ;;
+          esac
+          if [[ -n "$ASSET_DIRECTORY" && ! -d "$ASSET_DIRECTORY" ]]; then
+            printf '%s\n' 'asset-directory does not exist or is not a directory.' >&2
+            exit 1
+          fi
+          if [[ "$PACKAGE_LAYOUT" == "macos-app-zip" ]]; then
+            if [[ -z "$BUNDLE_NAME" || "$BUNDLE_NAME" == *"/"* || "$BUNDLE_NAME" == *"\\"* ]]; then
+              printf '%s\n' 'macos-bundle-name must be a non-empty app name without path separators.' >&2
+              exit 1
+            fi
+            if [[ ! "$BUNDLE_IDENTIFIER" =~ ^[A-Za-z0-9.-]+$ ]]; then
+              printf '%s\n' 'macos-bundle-identifier must contain only letters, digits, dots, and hyphens.' >&2
+              exit 1
+            fi
+          fi
+
+      - name: Install system packages
+        if: runner.os == 'Linux' && inputs.system-packages != ''
+        env:
+          PKGS: ${{ inputs.system-packages }}
+        run: |
+          read -ra PKG_ARR <<< "$PKGS"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${PKG_ARR[@]}"
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+          targets: ${{ inputs.target }}
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: desktop-${{ runner.os }}-${{ inputs.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            desktop-${{ runner.os }}-${{ inputs.target }}-
+
+      - name: Build release executable
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package Linux archive
+        if: inputs.package-layout == 'linux-tar-gz'
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ inputs.package-name }}
+          BINARY_NAME: ${{ inputs.binary-name }}
+          TARGET: ${{ inputs.target }}
+          ASSET_DIRECTORY: ${{ inputs.asset-directory }}
+        run: |
+          set -euo pipefail
+          stage="dist/$PACKAGE_NAME"
+          binary="target/$TARGET/release/$BINARY_NAME"
+          [[ -f "$binary" ]] || { printf 'Expected executable is missing: %s\n' "$binary" >&2; exit 1; }
+          mkdir -p "$stage"
+          install -m 755 "$binary" "$stage/$BINARY_NAME"
+          if [[ -n "$ASSET_DIRECTORY" ]]; then
+            cp -R "$ASSET_DIRECTORY" "$stage/assets"
+          fi
+          find "$stage" -name .DS_Store -delete
+          tar -czf "dist/$PACKAGE_NAME.tar.gz" -C dist "$PACKAGE_NAME"
+
+      - name: Package Windows archive
+        if: inputs.package-layout == 'windows-zip'
+        shell: pwsh
+        env:
+          PACKAGE_NAME: ${{ inputs.package-name }}
+          BINARY_NAME: ${{ inputs.binary-name }}
+          TARGET: ${{ inputs.target }}
+          ASSET_DIRECTORY: ${{ inputs.asset-directory }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $PWD "dist/$env:PACKAGE_NAME"
+          $binary = Join-Path $PWD "target/$env:TARGET/release/$env:BINARY_NAME.exe"
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+            throw "Expected executable is missing: $binary"
+          }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -LiteralPath $binary -Destination $stage
+          if ($env:ASSET_DIRECTORY -ne '') {
+            $assets = Join-Path $stage 'assets'
+            New-Item -ItemType Directory -Force -Path $assets | Out-Null
+            Get-ChildItem -LiteralPath $env:ASSET_DIRECTORY -Force | Copy-Item -Destination $assets -Recurse -Force
+          }
+          Get-ChildItem -Path $stage -Filter '.DS_Store' -File -Recurse | Remove-Item -Force
+          $archive = Join-Path $PWD "dist/$env:PACKAGE_NAME.zip"
+          Compress-Archive -Path $stage -DestinationPath $archive -Force
+
+      - name: Package macOS app archive
+        if: inputs.package-layout == 'macos-app-zip'
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ inputs.package-name }}
+          BINARY_NAME: ${{ inputs.binary-name }}
+          TARGET: ${{ inputs.target }}
+          ASSET_DIRECTORY: ${{ inputs.asset-directory }}
+          BUNDLE_NAME: ${{ inputs.macos-bundle-name }}
+          BUNDLE_IDENTIFIER: ${{ inputs.macos-bundle-identifier }}
+          BUNDLE_VERSION_INPUT: ${{ inputs.macos-bundle-version }}
+        run: |
+          set -euo pipefail
+          stage="dist/$PACKAGE_NAME"
+          app="$stage/$BUNDLE_NAME.app"
+          binary="target/$TARGET/release/$BINARY_NAME"
+          [[ -f "$binary" ]] || { printf 'Expected executable is missing: %s\n' "$binary" >&2; exit 1; }
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          install -m 755 "$binary" "$app/Contents/MacOS/$BINARY_NAME"
+          if [[ -n "$ASSET_DIRECTORY" ]]; then
+            cp -R "$ASSET_DIRECTORY" "$app/Contents/Resources/assets"
+          fi
+          find "$stage" -name .DS_Store -delete
+          bundle_version="$BUNDLE_VERSION_INPUT"
+          if [[ -z "$bundle_version" ]]; then
+            bundle_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          fi
+          if [[ -z "$bundle_version" ]]; then
+            printf '%s\n' 'No macOS bundle version was provided or found in the root Cargo.toml.' >&2
+            exit 1
+          fi
+          export BUNDLE_VERSION="$bundle_version"
+          python3 - "$app/Contents/Info.plist" <<'PY'
+          import os
+          import plistlib
+          import sys
+
+          info = {
+              "CFBundleExecutable": os.environ["BINARY_NAME"],
+              "CFBundleIdentifier": os.environ["BUNDLE_IDENTIFIER"],
+              "CFBundleName": os.environ["BUNDLE_NAME"],
+              "CFBundlePackageType": "APPL",
+              "CFBundleShortVersionString": os.environ["BUNDLE_VERSION"],
+              "CFBundleVersion": os.environ["BUNDLE_VERSION"],
+              "NSHighResolutionCapable": True,
+          }
+          with open(sys.argv[1], "wb") as output:
+              plistlib.dump(info, output, fmt=plistlib.FMT_XML, sort_keys=False)
+          PY
+          ditto -c -k --sequesterRsrc --keepParent "$stage" "dist/$PACKAGE_NAME.zip"
+
+      - name: Verify expected archive
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ inputs.package-name }}
+          PACKAGE_LAYOUT: ${{ inputs.package-layout }}
+        run: |
+          set -euo pipefail
+          case "$PACKAGE_LAYOUT" in
+            linux-tar-gz) archive="dist/$PACKAGE_NAME.tar.gz" ;;
+            windows-zip|macos-app-zip) archive="dist/$PACKAGE_NAME.zip" ;;
+            *) printf '%s\n' 'Unsupported package-layout.' >&2; exit 1 ;;
+          esac
+          [[ -f "$archive" ]] || { printf 'Expected archive is missing: %s\n' "$archive" >&2; exit 1; }
+
+      - name: Upload Linux archive
+        if: inputs.package-layout == 'linux-tar-gz'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist/${{ inputs.package-name }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows archive
+        if: inputs.package-layout == 'windows-zip'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist/${{ inputs.package-name }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload macOS archive
+        if: inputs.package-layout == 'macos-app-zip'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist/${{ inputs.package-name }}.zip
+          if-no-files-found: error
+          retention-days: 14
